@@ -25,13 +25,12 @@ Our architectural philosophy strictly adheres to the **Very Good Ventures (VGV) 
 blueprint-project-flutter/
 ├── RULES.md                    # Non-negotiable development rules (VGV Architecture)
 ├── packages/                   # Independent local packages (VGV Package Strategy)
-│   ├── core/                   # Shared infrastructure (Dio client, BaseApiService, Result, Logger)
-│   ├── app_ui/                 # Design system tokens, theme extensions, dynamic components
-│   ├── explorer_repository/   # Monorepo repository package
-│   └── aswan_api/              # Base API service & network handlers
+│   ├── core/                   # Shared infrastructure (BaseApiService, BaseRepository, Result, Logger, ApiConfig)
+│   ├── app_ui/                 # Design system tokens, theme extensions, dynamic components (AppColors, AppButton)
+│   └── explorer_repository/   # Monorepo repository package (FakeExplorerApi & ExplorerRepositoryImpl)
 ├── lib/
 │   ├── main.dart               # Entrypoint & RepositoryProvider setup
-│   ├── core/                   # App-level routing (AppRouter) & context extensions
+│   ├── core/                   # App-level routing (AppRouter), context extensions, AppBlocObserver
 │   └── features/
 │       └── explorer/           # Feature module following Clean Architecture
 │           ├── bloc/           # Cubit/BLoC state management
@@ -44,6 +43,8 @@ blueprint-project-flutter/
 ## 🚀 Key Features
 
 * **VGV Monorepo Modularization:** Independent local packages under `packages/`.
+* **Shared Infrastructure (`packages/core`):** `BaseApiService`, `BaseRepository`, `Result<S, E>` pattern, and `Logger`.
+* **App-Level Core (`lib/core`):** `AppRouter` navigation, `ContextExtensions`, and `AppBlocObserver`.
 * **BLoC/Cubit State Management:** Immutable state flow using `flutter_bloc`.
 * **Standalone UI Package (`packages/app_ui`):** Centralized design tokens and custom theme extensions.
 * **Mandatory Testing Coverage:** Pre-configured unit and widget test suite.
@@ -70,53 +71,37 @@ flutter run
 
 # 📖 Adding a New Functionality to the Application
 
-This guide outlines the process of adding a new functionality to our application, following our established [Very Good Ventures Architecture](https://verygood.ventures/blog/very-good-flutter-architecture/). The application uses a robust infrastructure for networking, logging, and error handling with the **Result pattern** and **Cubit/BLoC** for state management.
+This guide outlines the process of adding a new functionality to our application, following our established [Very Good Ventures Architecture](https://verygood.ventures/blog/very-good-flutter-architecture/). The application uses a robust infrastructure in `packages/core` for networking, logging, and error handling with the **Result pattern** and **Cubit/BLoC** for state management.
 
-## Core Infrastructure
+## Core Infrastructure (`packages/core`)
 
-### 1. Network Layer
+### 1. Network Layer (`BaseApiService`)
 
-The application uses a centralized Dio client configuration:
+The application uses a centralized API client service wrapper extending `BaseApiService`:
 
 ```dart
-class DioClient {
-  static Dio? _instance;
+abstract class BaseApiService {
+  final dynamic client;
+  BaseApiService(this.client);
 
-  static Dio get instance {
-    _instance ??= _createDio();
-    return _instance!;
-  }
-
-  static Dio _createDio() {
+  Future<T> handleResponse<T>({
+    required Future<dynamic> Function() apiCall,
+    required T Function(dynamic data) onSuccess,
+    required String logTag,
+  }) async {
     try {
-      logger.debug('Initializing Dio client...');
-      
-      final dio = Dio()
-        ..options = BaseOptions(
-          baseUrl: ApiConfig.defaultBaseUrl,
-          connectTimeout: ApiConfig.defaultConnectTimeout,
-          receiveTimeout: ApiConfig.defaultReceiveTimeout,
-          headers: ApiConfig.defaultHeaders,
-          validateStatus: (status) => true,
-        )
-        ..interceptors.add(
-          InterceptorsWrapper(
-            onRequest: _onRequest,
-            onResponse: _onResponse,
-            onError: _onError,
-          ),
-        );
-
-      return dio;
+      logger.info('Executing API Call', tag: logTag);
+      final rawResponse = await apiCall();
+      return onSuccess(rawResponse);
     } catch (e, stack) {
-      logger.error('Failed to initialize Dio client', error: e, stackTrace: stack);
+      logger.error('API Error encountered', error: e, stackTrace: stack, tag: logTag);
       rethrow;
     }
   }
 }
 ```
 
-### 2. API Configuration
+### 2. API Configuration (`ApiConfig`)
 
 Standard API configuration settings:
 
@@ -133,20 +118,24 @@ class ApiConfig {
 }
 ```
 
-### 3. Logging System
+### 3. Logging System (`Logger`)
 
 Comprehensive logging implementation:
 
 ```dart
-final Logger logger = LoggerLogging();
+final Logger logger = const Logger();
 
 class LogOptions {
+  final bool showTime;
+  final bool showEmoji;
+  final bool logInRelease;
+  final LoggerLevel level;
+
   const LogOptions({
     this.showTime = true,
     this.showEmoji = true,
     this.logInRelease = false,
-    this.level = LoggerLevel.info,
-    this.formatter,
+    this.level = LoggerLevel.debug,
   });
 }
 ```
@@ -155,209 +144,121 @@ class LogOptions {
 
 ## Step-by-Step Implementation Guide
 
-### 1. API Layer Implementation
+### 1. API Layer Implementation (`FakeExplorerApi` / `BaseApiService`)
 
-Create the API client for your feature in `packages/aswan_api/lib/`:
+Create the API client for your feature in `packages/explorer_repository/lib/src/api/fake_explorer_api.dart`:
 
 ```dart
-class NewFeatureApi extends BaseApiService {
-  NewFeatureApi(super.client);
+class FakeExplorerApi extends BaseApiService {
+  FakeExplorerApi() : super(null);
 
-  Future<Result<NewFeatureResponse, Exception>> fetchFeatureData() async {
-    return RepositoryHandler.handle(
-      repositoryCall: () async {
-        final response = await handleResponse(
-          apiCall: () => client.get('/api/new-feature'),
-          onSuccess: (data) => NewFeatureResponse.fromJson(data),
-          logTag: 'NewFeatureApi.fetchFeatureData',
-        );
-        return Result.success(response);
+  Future<Result<List<Map<String, dynamic>>, Exception>> fetchItems({String? folderId}) async {
+    return handleResponse(
+      apiCall: () async {
+        await Future.delayed(const Duration(milliseconds: 500));
+        final filtered = _mockDatabase.where((item) => item['parentId'] == folderId).toList();
+        return Result.success<List<Map<String, dynamic>>, Exception>(filtered);
       },
-      logTag: 'NewFeatureApi.fetchFeatureData',
+      onSuccess: (result) => result as Result<List<Map<String, dynamic>>, Exception>,
+      logTag: 'FakeExplorerApi.fetchItems',
     );
-  }
-
-  Future<Result<bool, Exception>> submitData(FeatureRequest request) async {
-    try {
-      final response = await handleResponse(
-        apiCall: () => client.post('/api/endpoint', data: request.toJson()),
-        onSuccess: (data) => FeatureResponse.fromJson(data),
-        logTag: 'NewFeatureApi.submitData',
-      );
-      return Result.success(response);
-    } catch (e) {
-      logger.error('Feature API submission error', error: e);
-      return Result.failure(Exception(e.toString()));
-    }
   }
 }
 ```
 
-### 2. Repository Layer Implementation
+### 2. Repository Layer Implementation (`ExplorerRepositoryImpl` / `BaseRepository`)
 
-Create a new repository package in `packages/new_feature_repository/`:
+Create a new repository package in `packages/explorer_repository/`:
 
 ```dart
-class NewFeatureRepository extends BaseRepository {
-  final AswanApi _api;
-  final NewFeatureMapper _mapper;
+class ExplorerRepositoryImpl extends BaseRepository implements ExplorerRepository {
+  final FakeExplorerApi _api;
 
-  NewFeatureRepository({
-    AswanApi? api,
-    NewFeatureMapper? mapper,
-  })  : _api = api ?? AswanApi(),
-        _mapper = mapper ?? const NewFeatureMapper();
+  ExplorerRepositoryImpl({FakeExplorerApi? api})
+      : _api = api ?? FakeExplorerApi();
 
-  Future<Result<NewFeatureEntity, Exception>> getFeatureData() async {
-    return RepositoryHandler.handle(
-      repositoryCall: () async {
-        final response = await _api.newFeatureApi.fetchFeatureData();
-        return response.fold(
-          (success) => Result.success(_mapper.mapToEntity(success)),
+  @override
+  Future<Result<List<FileItem>, Exception>> getItems({String? folderId}) async {
+    return handleRepositoryCall(
+      call: () async {
+        final result = await _api.fetchItems(folderId: folderId);
+        return result.fold(
+          (jsonList) => Result.success(jsonList.map((j) => FileItem.fromJson(j)).toList()),
           (failure) => Result.failure(failure),
         );
       },
-      logTag: 'NewFeatureRepository.getFeatureData',
+      logTag: 'ExplorerRepositoryImpl.getItems',
     );
   }
 }
 ```
 
-### 3. BLoC Layer Implementation
+### 3. BLoC Layer Implementation (`ExplorerBloc`)
 
-Create the BLoC in your feature directory `lib/presentation/new_feature/bloc/`:
+Create the BLoC in your feature directory `lib/features/explorer/bloc/`:
 
 ```dart
-// State
-class NewFeatureState extends Equatable {
-  final EnhancedStatus status;
-  final NewFeatureEntity? data;
-  final String? errorMessage;
+class ExplorerBloc extends Bloc<ExplorerEvent, ExplorerState> {
+  final ExplorerRepository repository;
 
-  const NewFeatureState({
-    this.status = EnhancedStatus.initial,
-    this.data,
-    this.errorMessage,
-  });
-
-  NewFeatureState copyWith({
-    EnhancedStatus? status,
-    NewFeatureEntity? data,
-    String? errorMessage,
-  }) {
-    return NewFeatureState(
-      status: status ?? this.status,
-      data: data ?? this.data,
-      errorMessage: errorMessage ?? this.errorMessage,
-    );
+  ExplorerBloc({required this.repository}) : super(ExplorerInitial()) {
+    on<LoadExplorerItems>(_onLoadItems);
   }
 
-  @override
-  List<Object?> get props => [status, data, errorMessage];
-}
-
-// Cubit
-class NewFeatureCubit extends Cubit<NewFeatureState> {
-  final NewFeatureRepository _repository;
-
-  NewFeatureCubit(this._repository) : super(const NewFeatureState());
-
-  Future<void> loadFeatureData() async {
-    try {
-      emit(state.copyWith(status: EnhancedStatus.loading));
-
-      final result = await _repository.getFeatureData();
-      result.fold(
-        (success) => emit(state.copyWith(
-          status: EnhancedStatus.loaded,
-          data: success,
-        )),
-        (failure) => emit(state.copyWith(
-          status: EnhancedStatus.error,
-          errorMessage: failure.toString(),
-        )),
-      );
-    } catch (e, s) {
-      logger.error('Failed to load feature data', error: e, stackTrace: s);
-      emit(state.copyWith(
-        status: EnhancedStatus.error,
-        errorMessage: 'Failed to load data',
-      ));
-    }
+  Future<void> _onLoadItems(LoadExplorerItems event, Emitter<ExplorerState> emit) async {
+    emit(ExplorerLoading());
+    final result = await repository.getItems(folderId: event.folderId);
+    result.fold(
+      (items) => emit(items.isEmpty ? ExplorerEmpty() : ExplorerLoaded(items: items)),
+      (failure) => emit(ExplorerError(failure.toString())),
+    );
   }
 }
 ```
 
-### 4. UI Layer Implementation
+### 4. UI Layer Implementation (`ExplorerPage`)
 
-Create your feature UI in `lib/presentation/new_feature/`:
+Create your feature UI in `lib/features/explorer/ui/`:
 
 ```dart
-class NewFeaturePage extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return RepositoryProvider(
-      create: (context) => NewFeatureRepository(),
-      child: BlocProvider(
-        create: (context) => NewFeatureCubit(
-          context.read<NewFeatureRepository>(),
-        )..loadFeatureData(),
-        child: const NewFeatureView(),
-      ),
-    );
-  }
-}
-
-class NewFeatureView extends StatelessWidget {
-  const NewFeatureView({super.key});
+class ExplorerPage extends StatelessWidget {
+  const ExplorerPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<NewFeatureCubit, NewFeatureState>(
+    return BlocBuilder<ExplorerBloc, ExplorerState>(
       builder: (context, state) {
-        return Scaffold(
-          appBar: AppBar(title: const Text('New Feature')),
-          body: _buildBody(context, state),
-        );
+        if (state is ExplorerLoading) {
+          return const Center(child: CircularProgressIndicator());
+        } else if (state is ExplorerLoaded) {
+          return ListView.builder(
+            itemCount: state.items.length,
+            itemBuilder: (context, index) => ListTile(title: Text(state.items[index].name)),
+          );
+        } else if (state is ExplorerError) {
+          return Center(child: Text('Error: ${state.message}'));
+        }
+        return const SizedBox();
       },
     );
   }
-
-  Widget _buildBody(BuildContext context, NewFeatureState state) {
-    switch (state.status) {
-      case EnhancedStatus.loading:
-        return const Center(child: CircularProgressIndicator());
-      
-      case EnhancedStatus.loaded:
-        return // Your feature UI;
-      
-      case EnhancedStatus.error:
-        return Center(
-          child: Text('Error: ${state.errorMessage}'),
-        );
-      
-      default:
-        return const SizedBox();
-    }
-  }
 }
 ```
 
-### 5. Adding Routes & Dependency Setup
+### 5. Adding Routes & Dependency Setup (`lib/core/routing/app_router.dart`)
 
-Add your feature to the app routes in `lib/app/routes/routes.dart`:
+Add your feature to the app routes in `lib/core/routing/app_router.dart`:
 
 ```dart
 class AppRouter {
-  static const String newFeature = '/new-feature';
+  static const String explorer = '/explorer';
 
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     switch (settings.name) {
-      case newFeature:
-        return MaterialPageRoute(
-          builder: (_) => const NewFeaturePage(),
-        );
-      // ... other routes
+      case explorer:
+        return MaterialPageRoute(builder: (_) => const ExplorerPage());
+      default:
+        return MaterialPageRoute(builder: (_) => const Scaffold());
     }
   }
 }
@@ -369,27 +270,24 @@ class AppRouter {
 
 ```
 lib/
-├── presentation/
-│   └── new_feature/
-│       ├── bloc/
-│       │   ├── new_feature_cubit.dart
-│       │   └── new_feature_state.dart
-│       ├── view/
-│       │   ├── new_feature_page.dart
-│       │   └── new_feature_view.dart
-│       └── widgets/
-│           └── feature_specific_widgets.dart
-│
-packages/
 ├── core/
-└── new_feature_repository/
-    ├── lib/
-    │   ├── src/
-    │   │   ├── models/
-    │   │   └── mappers/
-    │   └── new_feature_repository.dart
-    └── test/
-        └── new_feature_repository_test.dart
+│   ├── routing/app_router.dart
+│   ├── extensions/context_extensions.dart
+│   └── utils/bloc_observer.dart
+└── features/
+    └── explorer/
+        ├── bloc/explorer_bloc.dart
+        └── ui/explorer_page.dart
+
+packages/
+├── core/                      # Shared framework infrastructure
+│   ├── lib/src/network/base_api_service.dart
+│   ├── lib/src/repository/base_repository.dart
+│   └── lib/src/result/result.dart
+├── app_ui/                    # Design system package
+└── explorer_repository/      # Feature data repository
+    ├── lib/src/api/fake_explorer_api.dart
+    └── lib/src/explorer_repository.dart
 ```
 
 ---
