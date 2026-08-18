@@ -4,8 +4,26 @@ import 'package:app_ui/app_ui.dart';
 import 'package:explorer_repository/explorer_repository.dart';
 import '../bloc/explorer_bloc.dart';
 
+/// Entrypoint Page wrapping feature with Scoped On-Demand DI
 class ExplorerPage extends StatelessWidget {
   const ExplorerPage({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return RepositoryProvider<ExplorerRepository>(
+      create: (context) => ExplorerRepositoryImpl(api: FakeExplorerApi()),
+      child: BlocProvider<ExplorerBloc>(
+        create: (context) => ExplorerBloc(
+          repository: context.read<ExplorerRepository>(),
+        )..add(const LoadExplorerItems()),
+        child: const ExplorerView(),
+      ),
+    );
+  }
+}
+
+class ExplorerView extends StatelessWidget {
+  const ExplorerView({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +48,6 @@ class ExplorerPage extends StatelessWidget {
       ),
       body: Column(
         children: [
-          // Breadcrumb Bar
           const BreadcrumbsBar(),
           Expanded(
             child: BlocBuilder<ExplorerBloc, ExplorerState>(
@@ -210,16 +227,6 @@ class ExplorerPage extends StatelessWidget {
                 onTap: () {
                   Navigator.pop(bottomContext);
                   _showCreateFolderDialog(context);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.upload_file, color: AppColors.accent),
-                title: const Text('Upload Demo Document'),
-                onTap: () {
-                  Navigator.pop(bottomContext);
-                  context.read<ExplorerBloc>().add(
-                    UploadFileEvent('New_Document_${DateTime.now().second}.doc', FileItemType.document, 450000),
-                  );
                 },
               ),
             ],

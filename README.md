@@ -15,8 +15,9 @@ Our architectural philosophy strictly adheres to the **Very Good Ventures (VGV) 
 2. **UI Isolation:** UI widgets never make direct API, HTTP, or Firebase calls. All data flow is mediated by Repositories and `Cubit`/`BLoC` state management.
 3. **Repository Pattern:** Repositories serve as the single source of truth for the application, mapping raw API responses into domain models using `BaseMapper<Entity, Dto>`.
 4. **Result Pattern & Error Handling:** Explicit `Result<S, E>` types for predictable error propagation without unhandled runtime crashes.
-5. **Global State Logging (`AppBlocObserver`):** Automatic logging of BLoC creations, state transitions (`currentState ➡️ nextState`), and uncaught exceptions.
-6. **Testing Discipline:** 100% testable architecture with mandatory unit tests for Blocs, Cubits, and Repositories.
+5. **Scoped On-Demand Dependency Injection:** Repositories and Blocs/Cubits are injected at root level for global singletons OR scoped on-demand at feature/page boundaries to ensure proper lifecycle disposal.
+6. **Global State Logging (`AppBlocObserver`):** Automatic logging of BLoC creations, state transitions (`currentState ➡️ nextState`), and uncaught exceptions.
+7. **Testing Discipline:** 100% testable architecture with mandatory unit tests for Blocs, Cubits, and Repositories.
 
 ---
 
@@ -53,6 +54,7 @@ blueprint-project-flutter/
 * **VGV Monorepo Modularization:** Independent local packages under `packages/`.
 * **Shared Framework Package (`packages/core`):** `BaseApiService`, `BaseRepository`, `BaseMapper`, `Result<S, E>` pattern, and `Logger` system.
 * **App-Level Core (`lib/core`):** `AppRouter` navigation, `ContextExtensions`, and `AppBlocObserver`.
+* **Flexible DI Strategy:** Global root injection + Scoped feature/page on-demand injection.
 * **BLoC/Cubit State Management:** Immutable state flow using `flutter_bloc`.
 * **Standalone UI Package (`packages/app_ui`):** Centralized design tokens and custom theme extensions.
 * **Mandatory Testing Coverage:** Pre-configured unit and widget test suite.
@@ -80,6 +82,42 @@ flutter run
 # 📖 Core Infrastructure & Feature Implementation Guide
 
 This guide outlines the process of adding a new functionality to our application, following our established [Very Good Ventures Architecture](https://verygood.ventures/blog/very-good-flutter-architecture/).
+
+## 💉 Dependency Injection Strategy (Global vs. Scoped On-Demand)
+
+Dependency injection is **not limited to `main.dart`**. We enforce a **Contextual Scoped & On-Demand Injection Strategy**:
+
+1. **Global Root Injection (`main.dart`):**  
+   Reserved for app-wide singletons (e.g. Authentication Repository, User Session Storage, Global Network Client).
+
+2. **Scoped Feature Injection (`Page` / `View` Boundary):**  
+   Repositories and Cubits specific to a feature are injected **on-demand** when the page route is built. When the user leaves the page, resources are automatically disposed of:
+
+```dart
+class NewFeaturePage extends StatelessWidget {
+  const NewFeaturePage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return RepositoryProvider<NewFeatureRepository>(
+      create: (context) => NewFeatureRepositoryImpl(
+        api: FakeFeatureApi(),
+      ),
+      child: BlocProvider<NewFeatureCubit>(
+        create: (context) => NewFeatureCubit(
+          repository: context.read<NewFeatureRepository>(),
+        )..loadFeatureData(),
+        child: const NewFeatureView(),
+      ),
+    );
+  }
+}
+```
+
+3. **Sub-tree / Modal On-Demand Injection:**  
+   Inject dependencies dynamically inside modal bottom sheets, tab views, or nested route flows (`context.read<T>()` / `RepositoryProvider.value`).
+
+---
 
 ## 🛠️ Shared Core Infrastructure (`packages/core`)
 
@@ -261,13 +299,30 @@ class ExplorerBloc extends Bloc<ExplorerEvent, ExplorerState> {
 }
 ```
 
-### 4. UI Layer Implementation (`ExplorerPage`)
+### 4. UI Layer Implementation with Scoped DI (`ExplorerPage`)
 
-Create your feature UI in `lib/features/explorer/ui/`:
+Create your feature UI with scoped dependency injection in `lib/features/explorer/ui/`:
 
 ```dart
 class ExplorerPage extends StatelessWidget {
   const ExplorerPage({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return RepositoryProvider<ExplorerRepository>(
+      create: (context) => ExplorerRepositoryImpl(api: FakeExplorerApi()),
+      child: BlocProvider<ExplorerBloc>(
+        create: (context) => ExplorerBloc(
+          repository: context.read<ExplorerRepository>(),
+        )..add(const LoadExplorerItems()),
+        child: const ExplorerView(),
+      ),
+    );
+  }
+}
+
+class ExplorerView extends StatelessWidget {
+  const ExplorerView({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -343,8 +398,8 @@ packages/
 ## ✅ Best Practices
 
 1. **Error Handling:** Use the `Result` type for error handling, implement clear error messages, and handle loading states gracefully.
-2. **State Logging:** Attach `AppBlocObserver` to capture all state transitions and uncaught BLoC exceptions.
-3. **Data Mapping:** Extend `BaseMapper<Entity, Dto>` for deterministic mapping between network JSON models and domain entities.
-4. **State Management:** Keep states immutable, use `copyWith` for state updates, and handle all possible state branches.
-5. **Dependency Injection:** Use `RepositoryProvider` for repositories and `BlocProvider` for BLoCs.
+2. **Dependency Injection:** Use root `main.dart` for global singletons AND scoped `RepositoryProvider` / `BlocProvider` on demand per feature `Page` boundary.
+3. **State Logging:** Attach `AppBlocObserver` to capture all state transitions and uncaught BLoC exceptions.
+4. **Data Mapping:** Extend `BaseMapper<Entity, Dto>` for deterministic mapping between network JSON models and domain entities.
+5. **State Management:** Keep states immutable, use `copyWith` for state updates, and handle all possible state branches.
 6. **Testing:** Write unit tests for each layer (API, Repository, and Cubit/BLoC).
