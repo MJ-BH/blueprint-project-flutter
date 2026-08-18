@@ -7,6 +7,16 @@ This blueprint provides a production-ready starter template for building high-sc
 
 ---
 
+## 🔗 Backend Microservices Integration
+
+This Flutter mobile application is designed to connect seamlessly with our **[microservices-blueprint-architecture](https://github.com/MJ-BH/microservices-blueprint-architecture)** backend ecosystem:
+- **`auth-service`**: Handles login, registration, and automatic JWT token refresh.
+- **`explorer-service`**: Serves file & folder hierarchies (`FileItem`), parent-child navigation, and folder management.
+- **`url-builder-service`**: Generates secure pre-signed URLs (AWS S3, Cloudflare R2, MinIO, Local NAS) when users upload/download documents from the mobile app.
+- **`email-service`**: Receives async RabbitMQ events to send notification emails for storage alerts and file transfers.
+
+---
+
 ## 🌐 White-Label, Multi-Brand & Flavor Possibilities
 
 One of the greatest powers of this architecture is **Single Core Monorepo → Multi-Brand & Multi-Country Deployments**.
