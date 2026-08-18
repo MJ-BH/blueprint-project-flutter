@@ -1,66 +1,57 @@
+import 'package:core/core.dart';
+import 'api/fake_explorer_api.dart';
 import 'models/file_item.dart';
 
 abstract class ExplorerRepository {
-  Future<List<FileItem>> getItems({String? folderId});
-  Future<FileItem> createFolder(String name, {String? parentId});
-  Future<void> deleteItem(String id);
-  Future<FileItem> uploadFile(String name, FileItemType type, int size, {String? parentId});
+  Future<Result<List<FileItem>, Exception>> getItems({String? folderId});
+  Future<Result<FileItem, Exception>> createFolder(String name, {String? parentId});
+  Future<Result<bool, Exception>> deleteItem(String id);
 }
 
-class MockExplorerRepository implements ExplorerRepository {
-  final List<FileItem> _mockDatabase = [
-    FileItem(id: 'f1', name: 'Documents', type: FileItemType.folder, sizeInBytes: 0, lastModified: DateTime.now().subtract(const Duration(days: 2))),
-    FileItem(id: 'f2', name: 'Images & Design', type: FileItemType.folder, sizeInBytes: 0, lastModified: DateTime.now().subtract(const Duration(days: 5))),
-    FileItem(id: 'f3', name: 'Travel_Voucher_2026.pdf', type: FileItemType.pdf, sizeInBytes: 2450000, lastModified: DateTime.now().subtract(const Duration(hours: 4))),
-    FileItem(id: 'f4', name: 'Architecture_Rules.doc', type: FileItemType.document, sizeInBytes: 120000, lastModified: DateTime.now().subtract(const Duration(days: 1))),
-    
-    // Items inside 'Documents' (f1)
-    FileItem(id: 'f1_1', name: 'Hera_Maquettes_Dev_v7.pdf', type: FileItemType.pdf, sizeInBytes: 5400000, lastModified: DateTime.now(), parentId: 'f1'),
-    FileItem(id: 'f1_2', name: 'Oolab_Kotlin_Challenge.doc', type: FileItemType.document, sizeInBytes: 310000, lastModified: DateTime.now(), parentId: 'f1'),
-    
-    // Items inside 'Images & Design' (f2)
-    FileItem(id: 'f2_1', name: 'hero_banner_preview.png', type: FileItemType.image, sizeInBytes: 1800000, lastModified: DateTime.now(), parentId: 'f2'),
-  ];
+class ExplorerRepositoryImpl extends BaseRepository implements ExplorerRepository {
+  final FakeExplorerApi _api;
+
+  ExplorerRepositoryImpl({FakeExplorerApi? api})
+      : _api = api ?? FakeExplorerApi();
 
   @override
-  Future<List<FileItem>> getItems({String? folderId}) async {
-    await Future.delayed(const Duration(milliseconds: 600));
-    return _mockDatabase.where((item) => item.parentId == folderId).toList();
-  }
-
-  @override
-  Future<FileItem> createFolder(String name, {String? parentId}) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-    final newFolder = FileItem(
-      id: 'folder_${DateTime.now().millisecondsSinceEpoch}',
-      name: name,
-      type: FileItemType.folder,
-      sizeInBytes: 0,
-      lastModified: DateTime.now(),
-      parentId: parentId,
+  Future<Result<List<FileItem>, Exception>> getItems({String? folderId}) async {
+    return handleRepositoryCall(
+      call: () async {
+        final result = await _api.fetchItems(folderId: folderId);
+        return result.fold(
+          (jsonList) {
+            final items = jsonList.map((json) => FileItem.fromJson(json)).toList();
+            return Result.success(items);
+          },
+          (failure) => Result.failure(failure),
+        );
+      },
+      logTag: 'ExplorerRepositoryImpl.getItems',
     );
-    _mockDatabase.add(newFolder);
-    return newFolder;
   }
 
   @override
-  Future<void> deleteItem(String id) async {
-    await Future.delayed(const Duration(milliseconds: 400));
-    _mockDatabase.removeWhere((item) => item.id == id || item.parentId == id);
-  }
-
-  @override
-  Future<FileItem> uploadFile(String name, FileItemType type, int size, {String? parentId}) async {
-    await Future.delayed(const Duration(milliseconds: 700));
-    final newFile = FileItem(
-      id: 'file_${DateTime.now().millisecondsSinceEpoch}',
-      name: name,
-      type: type,
-      sizeInBytes: size,
-      lastModified: DateTime.now(),
-      parentId: parentId,
+  Future<Result<FileItem, Exception>> createFolder(String name, {String? parentId}) async {
+    return handleRepositoryCall(
+      call: () async {
+        final result = await _api.createFolder(name: name, parentId: parentId);
+        return result.fold(
+          (json) => Result.success(FileItem.fromJson(json)),
+          (failure) => Result.failure(failure),
+        );
+      },
+      logTag: 'ExplorerRepositoryImpl.createFolder',
     );
-    _mockDatabase.add(newFile);
-    return newFile;
+  }
+
+  @override
+  Future<Result<bool, Exception>> deleteItem(String id) async {
+    return handleRepositoryCall(
+      call: () async {
+        return await _api.deleteItem(id: id);
+      },
+      logTag: 'ExplorerRepositoryImpl.deleteItem',
+    );
   }
 }

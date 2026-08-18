@@ -8,3 +8,5 @@ environment:
 
 dependencies:
   equatable: ^2.0.5
+  core:
+    path: ../core

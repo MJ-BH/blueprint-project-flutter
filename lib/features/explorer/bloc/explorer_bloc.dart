@@ -31,15 +31,6 @@ class DeleteItemEvent extends ExplorerEvent {
   List<Object?> get props => [id];
 }
 
-class UploadFileEvent extends ExplorerEvent {
-  final String name;
-  final FileItemType type;
-  final int size;
-  const UploadFileEvent(this.name, this.type, this.size);
-  @override
-  List<Object?> get props => [name, type, size];
-}
-
 class NavigateBackEvent extends ExplorerEvent {}
 
 // STATES
@@ -93,61 +84,50 @@ class ExplorerBloc extends Bloc<ExplorerEvent, ExplorerState> {
     on<LoadExplorerItems>(_onLoadItems);
     on<CreateFolderEvent>(_onCreateFolder);
     on<DeleteItemEvent>(_onDeleteItem);
-    on<UploadFileEvent>(_onUploadFile);
     on<NavigateBackEvent>(_onNavigateBack);
   }
 
   Future<void> _onLoadItems(LoadExplorerItems event, Emitter<ExplorerState> emit) async {
     emit(ExplorerLoading());
-    try {
-      if (event.folderId != null && event.folderName != null) {
-        if (!_breadcrumbs.any((b) => b['id'] == event.folderId)) {
-          _breadcrumbs.add({'id': event.folderId!, 'name': event.folderName!});
-        }
-      } else if (event.folderId == null) {
-        _breadcrumbs.clear();
-        _breadcrumbs.add({'id': 'root', 'name': 'Root Explorer'});
-      }
 
-      final items = await repository.getItems(folderId: event.folderId);
-      if (items.isEmpty) {
-        emit(ExplorerEmpty(currentFolderId: event.folderId, breadcrumbs: List.from(_breadcrumbs)));
-      } else {
-        emit(ExplorerLoaded(items: items, currentFolderId: event.folderId, breadcrumbs: List.from(_breadcrumbs)));
+    if (event.folderId != null && event.folderName != null) {
+      if (!_breadcrumbs.any((b) => b['id'] == event.folderId)) {
+        _breadcrumbs.add({'id': event.folderId!, 'name': event.folderName!});
       }
-    } catch (e) {
-      emit(ExplorerError('Failed to load explorer items: $e'));
+    } else if (event.folderId == null) {
+      _breadcrumbs.clear();
+      _breadcrumbs.add({'id': 'root', 'name': 'Root Explorer'});
     }
+
+    final result = await repository.getItems(folderId: event.folderId);
+    result.fold(
+      (items) {
+        if (items.isEmpty) {
+          emit(ExplorerEmpty(currentFolderId: event.folderId, breadcrumbs: List.from(_breadcrumbs)));
+        } else {
+          emit(ExplorerLoaded(items: items, currentFolderId: event.folderId, breadcrumbs: List.from(_breadcrumbs)));
+        }
+      },
+      (failure) => emit(ExplorerError(failure.toString())),
+    );
   }
 
   Future<void> _onCreateFolder(CreateFolderEvent event, Emitter<ExplorerState> emit) async {
     final currentFolderId = _getCurrentFolderId();
-    try {
-      await repository.createFolder(event.name, parentId: currentFolderId);
-      add(LoadExplorerItems(folderId: currentFolderId));
-    } catch (e) {
-      emit(ExplorerError('Failed to create folder: $e'));
-    }
+    final result = await repository.createFolder(event.name, parentId: currentFolderId);
+    result.fold(
+      (_) => add(LoadExplorerItems(folderId: currentFolderId)),
+      (failure) => emit(ExplorerError(failure.toString())),
+    );
   }
 
   Future<void> _onDeleteItem(DeleteItemEvent event, Emitter<ExplorerState> emit) async {
     final currentFolderId = _getCurrentFolderId();
-    try {
-      await repository.deleteItem(event.id);
-      add(LoadExplorerItems(folderId: currentFolderId));
-    } catch (e) {
-      emit(ExplorerError('Failed to delete item: $e'));
-    }
-  }
-
-  Future<void> _onUploadFile(UploadFileEvent event, Emitter<ExplorerState> emit) async {
-    final currentFolderId = _getCurrentFolderId();
-    try {
-      await repository.uploadFile(event.name, event.type, event.size, parentId: currentFolderId);
-      add(LoadExplorerItems(folderId: currentFolderId));
-    } catch (e) {
-      emit(ExplorerError('Failed to upload file: $e'));
-    }
+    final result = await repository.deleteItem(event.id);
+    result.fold(
+      (_) => add(LoadExplorerItems(folderId: currentFolderId)),
+      (failure) => emit(ExplorerError(failure.toString())),
+    );
   }
 
   void _onNavigateBack(NavigateBackEvent event, Emitter<ExplorerState> emit) {

@@ -21,7 +21,7 @@ class OolabApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return RepositoryProvider<ExplorerRepository>(
-      create: (_) => MockExplorerRepository(),
+      create: (_) => ExplorerRepositoryImpl(api: FakeExplorerApi()),
       child: BlocProvider<ExplorerBloc>(
         create: (context) => ExplorerBloc(
           repository: context.read<ExplorerRepository>(),
