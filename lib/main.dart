@@ -12,11 +12,11 @@ void main() {
   // Attach Global BLoC Observer from lib/core/utils
   Bloc.observer = AppBlocObserver();
 
-  runApp(const OolabApp());
+  runApp(const ExampleApp());
 }
 
-class OolabApp extends StatelessWidget {
-  const OolabApp({Key? key}) : super(key: key);
+class ExampleApp extends StatelessWidget {
+  const ExampleApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +27,7 @@ class OolabApp extends StatelessWidget {
           repository: context.read<ExplorerRepository>(),
         )..add(const LoadExplorerItems()),
         child: MaterialApp(
-          title: 'Oolab Cloud Explorer — Flutter Edition',
+          title: 'Flutter Clean Architecture Example App',
           theme: AppTheme.darkTheme,
           debugShowCheckedModeBanner: false,
           onGenerateRoute: AppRouter.onGenerateRoute,

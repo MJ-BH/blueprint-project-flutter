@@ -11,7 +11,7 @@ class ExplorerPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Oolab Cloud Explorer'),
+        title: const Text('Cloud Explorer Example'),
         leading: BlocBuilder<ExplorerBloc, ExplorerState>(
           builder: (context, state) {
             bool canGoBack = false;
