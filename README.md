@@ -13,9 +13,10 @@ Our architectural philosophy strictly adheres to the **Very Good Ventures (VGV) 
 
 1. **Layer Separation & Monorepo Packages (`packages/`):** All reusable domain entities, data providers, API clients, and design system components are extracted into standalone local packages under `packages/` (e.g. `packages/core`, `packages/app_ui`, `packages/explorer_repository`).
 2. **UI Isolation:** UI widgets never make direct API, HTTP, or Firebase calls. All data flow is mediated by Repositories and `Cubit`/`BLoC` state management.
-3. **Repository Pattern:** Repositories serve as the single source of truth for the application, mapping raw API responses into domain models.
+3. **Repository Pattern:** Repositories serve as the single source of truth for the application, mapping raw API responses into domain models using `BaseMapper<Entity, Dto>`.
 4. **Result Pattern & Error Handling:** Explicit `Result<S, E>` types for predictable error propagation without unhandled runtime crashes.
-5. **Testing Discipline:** 100% testable architecture with mandatory unit tests for Blocs, Cubits, and Repositories.
+5. **Global State Logging (`AppBlocObserver`):** Automatic logging of BLoC creations, state transitions (`currentState ➡️ nextState`), and uncaught exceptions.
+6. **Testing Discipline:** 100% testable architecture with mandatory unit tests for Blocs, Cubits, and Repositories.
 
 ---
 
@@ -25,11 +26,18 @@ Our architectural philosophy strictly adheres to the **Very Good Ventures (VGV) 
 blueprint-project-flutter/
 ├── RULES.md                    # Non-negotiable development rules (VGV Architecture)
 ├── packages/                   # Independent local packages (VGV Package Strategy)
-│   ├── core/                   # Shared infrastructure (BaseApiService, BaseRepository, Result, Logger, ApiConfig)
+│   ├── core/                   # Shared infrastructure (BaseApiService, BaseRepository, BaseMapper, Result, Logger)
+│   │   └── lib/src/
+│   │       ├── errors/         # ServerFailure, NetworkFailure, AuthFailure
+│   │       ├── logging/        # Logger & LogOptions system
+│   │       ├── mappers/        # BaseMapper<Entity, Dto> interface
+│   │       ├── network/        # BaseApiService & ApiConfig
+│   │       ├── repository/     # BaseRepository wrapper
+│   │       └── result/         # Result<S, E> pattern
 │   ├── app_ui/                 # Design system tokens, theme extensions, dynamic components (AppColors, AppButton)
 │   └── explorer_repository/   # Monorepo repository package (FakeExplorerApi & ExplorerRepositoryImpl)
 ├── lib/
-│   ├── main.dart               # Entrypoint & RepositoryProvider setup
+│   ├── main.dart               # Entrypoint, RepositoryProvider & Bloc.observer setup
 │   ├── core/                   # App-level routing (AppRouter), context extensions, AppBlocObserver
 │   └── features/
 │       └── explorer/           # Feature module following Clean Architecture
@@ -43,7 +51,7 @@ blueprint-project-flutter/
 ## 🚀 Key Features
 
 * **VGV Monorepo Modularization:** Independent local packages under `packages/`.
-* **Shared Infrastructure (`packages/core`):** `BaseApiService`, `BaseRepository`, `Result<S, E>` pattern, and `Logger`.
+* **Shared Framework Package (`packages/core`):** `BaseApiService`, `BaseRepository`, `BaseMapper`, `Result<S, E>` pattern, and `Logger` system.
 * **App-Level Core (`lib/core`):** `AppRouter` navigation, `ContextExtensions`, and `AppBlocObserver`.
 * **BLoC/Cubit State Management:** Immutable state flow using `flutter_bloc`.
 * **Standalone UI Package (`packages/app_ui`):** Centralized design tokens and custom theme extensions.
@@ -69,15 +77,89 @@ flutter run
 
 ---
 
-# 📖 Adding a New Functionality to the Application
+# 📖 Core Infrastructure & Feature Implementation Guide
 
-This guide outlines the process of adding a new functionality to our application, following our established [Very Good Ventures Architecture](https://verygood.ventures/blog/very-good-flutter-architecture/). The application uses a robust infrastructure in `packages/core` for networking, logging, and error handling with the **Result pattern** and **Cubit/BLoC** for state management.
+This guide outlines the process of adding a new functionality to our application, following our established [Very Good Ventures Architecture](https://verygood.ventures/blog/very-good-flutter-architecture/).
 
-## Core Infrastructure (`packages/core`)
+## 🛠️ Shared Core Infrastructure (`packages/core`)
 
-### 1. Network Layer (`BaseApiService`)
+### 1. Logging System (`Logger` & `LogOptions`)
 
-The application uses a centralized API client service wrapper extending `BaseApiService`:
+Comprehensive logging implementation located in `packages/core/lib/src/logging/logger.dart`:
+
+```dart
+final Logger logger = const Logger();
+
+class LogOptions {
+  final bool showTime;
+  final bool showEmoji;
+  final bool logInRelease;
+  final LoggerLevel level;
+
+  const LogOptions({
+    this.showTime = true,
+    this.showEmoji = true,
+    this.logInRelease = false,
+    this.level = LoggerLevel.debug,
+  });
+}
+```
+
+### 2. Global BLoC Observer (`AppBlocObserver`)
+
+App-wide BLoC state change and error logging configured in `lib/core/utils/bloc_observer.dart` and attached in `lib/main.dart`:
+
+```dart
+// lib/main.dart
+void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Attach Global BLoC Observer for state tracking
+  Bloc.observer = AppBlocObserver();
+
+  runApp(const ExampleApp());
+}
+
+// lib/core/utils/bloc_observer.dart
+class AppBlocObserver extends BlocObserver {
+  @override
+  void onChange(BlocBase bloc, Change change) {
+    super.onChange(bloc, change);
+    logger.debug('🔄 State Change in ${bloc.runtimeType}: ${change.currentState} ➡️ ${change.nextState}');
+  }
+
+  @override
+  void onError(BlocBase bloc, Object error, StackTrace stackTrace) {
+    logger.error('🔴 Error in ${bloc.runtimeType}', error: error, stackTrace: stackTrace);
+    super.onError(bloc, error, stackTrace);
+  }
+}
+```
+
+### 3. Base Mapper Package (`BaseMapper<Entity, Dto>`)
+
+Standardized DTO-to-Entity mapping interface located in `packages/core/lib/src/mappers/base_mapper.dart`:
+
+```dart
+abstract class BaseMapper<Entity, Dto> {
+  const BaseMapper();
+
+  Entity mapToEntity(Dto dto);
+  Dto mapToDto(Entity entity);
+
+  List<Entity> mapToEntityList(List<Dto> dtos) {
+    return dtos.map(mapToEntity).toList();
+  }
+
+  List<Dto> mapToDtoList(List<Entity> entities) {
+    return entities.map(mapToDto).toList();
+  }
+}
+```
+
+### 4. Network Layer (`BaseApiService` & `ApiConfig`)
+
+Centralized API service wrapper in `packages/core/lib/src/network/`:
 
 ```dart
 abstract class BaseApiService {
@@ -101,48 +183,9 @@ abstract class BaseApiService {
 }
 ```
 
-### 2. API Configuration (`ApiConfig`)
-
-Standard API configuration settings:
-
-```dart
-class ApiConfig {
-  static const defaultBaseUrl = 'http://mas.phyliatech.com/';
-  static const defaultConnectTimeout = Duration(seconds: 30);
-  static const defaultReceiveTimeout = Duration(seconds: 30);
-
-  static const defaultHeaders = {
-    'Accept': 'application/json',
-    'Content-Type': 'application/json',
-  };
-}
-```
-
-### 3. Logging System (`Logger`)
-
-Comprehensive logging implementation:
-
-```dart
-final Logger logger = const Logger();
-
-class LogOptions {
-  final bool showTime;
-  final bool showEmoji;
-  final bool logInRelease;
-  final LoggerLevel level;
-
-  const LogOptions({
-    this.showTime = true,
-    this.showEmoji = true,
-    this.logInRelease = false,
-    this.level = LoggerLevel.debug,
-  });
-}
-```
-
 ---
 
-## Step-by-Step Implementation Guide
+## Step-by-Step Feature Implementation Guide
 
 ### 1. API Layer Implementation (`FakeExplorerApi` / `BaseApiService`)
 
@@ -173,9 +216,11 @@ Create a new repository package in `packages/explorer_repository/`:
 ```dart
 class ExplorerRepositoryImpl extends BaseRepository implements ExplorerRepository {
   final FakeExplorerApi _api;
+  final FileItemMapper _mapper;
 
-  ExplorerRepositoryImpl({FakeExplorerApi? api})
-      : _api = api ?? FakeExplorerApi();
+  ExplorerRepositoryImpl({FakeExplorerApi? api, FileItemMapper? mapper})
+      : _api = api ?? FakeExplorerApi(),
+        _mapper = mapper ?? const FileItemMapper();
 
   @override
   Future<Result<List<FileItem>, Exception>> getItems({String? folderId}) async {
@@ -183,7 +228,7 @@ class ExplorerRepositoryImpl extends BaseRepository implements ExplorerRepositor
       call: () async {
         final result = await _api.fetchItems(folderId: folderId);
         return result.fold(
-          (jsonList) => Result.success(jsonList.map((j) => FileItem.fromJson(j)).toList()),
+          (jsonList) => Result.success(_mapper.mapToEntityList(jsonList)),
           (failure) => Result.failure(failure),
         );
       },
@@ -281,6 +326,9 @@ lib/
 
 packages/
 ├── core/                      # Shared framework infrastructure
+│   ├── lib/src/errors/failures.dart
+│   ├── lib/src/logging/logger.dart
+│   ├── lib/src/mappers/base_mapper.dart
 │   ├── lib/src/network/base_api_service.dart
 │   ├── lib/src/repository/base_repository.dart
 │   └── lib/src/result/result.dart
@@ -295,15 +343,8 @@ packages/
 ## ✅ Best Practices
 
 1. **Error Handling:** Use the `Result` type for error handling, implement clear error messages, and handle loading states gracefully.
-2. **State Management:** Keep states immutable, use `copyWith` for state updates, and handle all possible state branches.
-3. **Dependency Injection:** Use `RepositoryProvider` for repositories and `BlocProvider` for BLoCs.
-4. **Testing:** Write unit tests for each layer (API, Repository, and Cubit/BLoC).
-
----
-
-## ⚠️ Common Pitfalls to Avoid
-
-1. **Don't Skip Layers:** Always maintain proper data flow: **UI → BLoC → Repository → API**. Never access the API directly from BLoC.
-2. **State Management:** Don't modify state directly; always use `emit()` in Cubits.
-3. **Error Handling:** Don't swallow errors; properly propagate errors up the chain.
-4. **Testing:** Mock dependencies and test both success and error branches.
+2. **State Logging:** Attach `AppBlocObserver` to capture all state transitions and uncaught BLoC exceptions.
+3. **Data Mapping:** Extend `BaseMapper<Entity, Dto>` for deterministic mapping between network JSON models and domain entities.
+4. **State Management:** Keep states immutable, use `copyWith` for state updates, and handle all possible state branches.
+5. **Dependency Injection:** Use `RepositoryProvider` for repositories and `BlocProvider` for BLoCs.
+6. **Testing:** Write unit tests for each layer (API, Repository, and Cubit/BLoC).
