@@ -2,14 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:app_ui/app_ui.dart';
 import 'package:explorer_repository/explorer_repository.dart';
-import 'core/core.dart';
+import 'package:core/core.dart';
+import 'core/app_core.dart';
 import 'features/explorer/bloc/explorer_bloc.dart';
-import 'features/explorer/ui/explorer_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Attach Global BLoC Observer from lib/core/
+  // Attach Global BLoC Observer from lib/core/utils
   Bloc.observer = AppBlocObserver();
 
   runApp(const OolabApp());
@@ -30,7 +30,8 @@ class OolabApp extends StatelessWidget {
           title: 'Oolab Cloud Explorer — Flutter Edition',
           theme: AppTheme.darkTheme,
           debugShowCheckedModeBanner: false,
-          home: const ExplorerPage(),
+          onGenerateRoute: AppRouter.onGenerateRoute,
+          initialRoute: AppRoutes.home,
         ),
       ),
     );
