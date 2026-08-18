@@ -14,7 +14,7 @@ One of the greatest powers of this architecture is **Single Core Monorepo → Mu
 By isolating shared logic into `packages/` (`packages/core`, `packages/app_ui`, `packages/*_repository`), you can build and maintain multiple distinct applications or client variants inside `lib/` using the exact same underlying codebase:
 
 * 🏢 **Multi-Client / White-Label Deployments:** Client A (`lib/main_client_a.dart`) vs Client B (`lib/main_client_b.dart`) with unique branding, API endpoints, and feature flags.
-* 🌍 **Multi-Country & Regional Variants:** Unique bundle IDs (`com.trvl.us`, `com.trvl.fr`), local currency formats, and country-specific payment gateways.
+* 🌍 **Multi-Country & Regional Variants:** Unique bundle IDs (`com.example.us`, `com.example.fr`), local currency formats, and country-specific payment gateways.
 * 🎨 **Dynamic UI Themes & Branding:** Swapping colors, typography, and logo asset bundles via `packages/app_ui` without modifying feature business logic.
 * 🚩 **Feature Flag Governance:** Turning modules on/off dynamically per client tier without resubmitting core app code.
 
@@ -40,13 +40,20 @@ Our architectural philosophy strictly adheres to the **Very Good Ventures (VGV) 
 blueprint-project-flutter/
 ├── RULES.md                    # Non-negotiable development rules (VGV Architecture)
 ├── packages/                   # Shared Reusable Monorepo Packages (REUSED BY ALL FLAVORS)
-│   ├── core/                   # Shared infrastructure (BaseApiService, BaseRepository, BaseMapper, Result, Logger)
+│   ├── core/                   # Shared framework infrastructure (BaseApiService, BaseRepository, BaseMapper, Result, Logger)
+│   │   └── lib/src/
+│   │       ├── errors/         # ServerFailure, NetworkFailure, AuthFailure
+│   │       ├── logging/        # Logger & LogOptions system
+│   │       ├── mappers/        # BaseMapper<Entity, Dto> interface
+│   │       ├── network/        # BaseApiService & ApiConfig
+│   │       ├── repository/     # BaseRepository wrapper
+│   │       └── result/         # Result<S, E> pattern
 │   ├── app_ui/                 # Design system tokens, theme extensions, dynamic components (AppColors, AppButton)
 │   └── explorer_repository/   # Monorepo repository package (FakeExplorerApi & ExplorerRepositoryImpl)
 ├── lib/
 │   ├── main.dart               # Generic/Demo App entry point
-│   ├── main_client_a.dart      # Client A / Brand Alpha target (Custom Theme, API Endpoint A)
-│   ├── main_client_b.dart      # Client B / Regional Beta target (Custom Theme, API Endpoint B)
+│   ├── main_client_a.dart      # Client A Target (Alpha Brand)
+│   ├── main_client_b.dart      # Client B Target (Beta Brand)
 │   ├── core/                   # App-level routing (AppRouter), context extensions, AppBlocObserver
 │   └── features/
 │       └── explorer/           # Feature module following Clean Architecture
@@ -63,10 +70,10 @@ blueprint-project-flutter/
 # Run Generic Demo App
 flutter run -t lib/main.dart
 
-# Run Client A Target (Alpha Travel)
+# Run Client A Target (Alpha Brand)
 flutter run -t lib/main_client_a.dart --flavor clientA
 
-# Run Client B Target (Beta Mobility)
+# Run Client B Target (Beta Brand)
 flutter run -t lib/main_client_b.dart --flavor clientB
 
 # Build Release APK for Client A
@@ -75,128 +82,256 @@ flutter build apk -t lib/main_client_a.dart --flavor clientA
 
 ---
 
-# 📖 Core Infrastructure & Feature Implementation Guide
+# 📖 How to Add a New Feature to the Application
 
-This guide outlines the process of adding a new functionality to our application, following our established [Very Good Ventures Architecture](https://verygood.ventures/blog/very-good-flutter-architecture/).
+This step-by-step guide outlines how to implement a new feature following our **Very Good Ventures (VGV) Clean Architecture Monorepo** standard.
 
-## 💉 Dependency Injection Strategy (Global vs. Scoped On-Demand)
+```
+┌─────────────────────────────────────────────────────────────┐
+│ 1. API Layer (packages/feature_repository/lib/src/api/)    │
+│    Extends BaseApiService & returns Result<Data, Exception> │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────┐
+│ 2. Mapper Layer (packages/feature_repository/lib/src/mappers)│
+│    Extends BaseMapper<Entity, Dto>                          │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────┐
+│ 3. Repository Layer (packages/feature_repository/lib/src/)  │
+│    Extends BaseRepository & maps DTOs to Domain Entities   │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────┐
+│ 4. BLoC Layer (lib/features/feature/bloc/)                  │
+│    Emits Loading, Loaded, Error using result.fold()         │
+└──────────────────────────────┬──────────────────────────────┘
+                               │
+┌──────────────────────────────▼──────────────────────────────┐
+│ 5. UI Layer & Scoped DI (lib/features/feature/ui/)          │
+│    FeaturePage wraps RepositoryProvider & BlocProvider      │
+└─────────────────────────────────────────────────────────────┘
+```
 
-Dependency injection is **not limited to `main.dart`**. We enforce a **Contextual Scoped & On-Demand Injection Strategy**:
+---
 
-1. **Global Root Injection (`main.dart` / `main_client_a.dart`):**  
-   Reserved for app-wide singletons (e.g. Authentication Repository, User Session Storage, Global Network Client).
+### Step 1: API Layer Implementation (`BaseApiService`)
 
-2. **Scoped Feature Injection (`Page` / `View` Boundary):**  
-   Repositories and Cubits specific to a feature are injected **on-demand** when the page route is built. When the user leaves the page, resources are automatically disposed of:
+Create your feature API service inside `packages/new_feature_repository/lib/src/api/new_feature_api.dart`:
 
 ```dart
+import 'package:core/core.dart';
+
+class NewFeatureApi extends BaseApiService {
+  NewFeatureApi({dynamic client}) : super(client);
+
+  Future<Result<List<Map<String, dynamic>>, Exception>> fetchFeatureData() async {
+    return handleResponse(
+      apiCall: () async {
+        final response = await client.get('/api/v1/new-feature');
+        return Result.success<List<Map<String, dynamic>>, Exception>(response.data);
+      },
+      onSuccess: (result) => result as Result<List<Map<String, dynamic>>, Exception>,
+      logTag: 'NewFeatureApi.fetchFeatureData',
+    );
+  }
+}
+```
+
+---
+
+### Step 2: DTO & Mapper Implementation (`BaseMapper<Entity, Dto>`)
+
+Create your Data Transfer Model and Entity Mapper in `packages/new_feature_repository/lib/src/mappers/feature_mapper.dart`:
+
+```dart
+import 'package:core/core.dart';
+import '../models/feature_entity.dart';
+
+class FeatureDto {
+  final String id;
+  final String title;
+
+  FeatureDto({required this.id, required this.title});
+
+  factory FeatureDto.fromJson(Map<String, dynamic> json) {
+    return FeatureDto(id: json['id'], title: json['title']);
+  }
+}
+
+class FeatureMapper extends BaseMapper<FeatureEntity, FeatureDto> {
+  const FeatureMapper();
+
+  @override
+  FeatureEntity mapToEntity(FeatureDto dto) {
+    return FeatureEntity(id: dto.id, title: dto.title);
+  }
+
+  @override
+  FeatureDto mapToDto(FeatureEntity entity) {
+    return FeatureDto(id: entity.id, title: entity.title);
+  }
+}
+```
+
+---
+
+### Step 3: Repository Layer Implementation (`BaseRepository`)
+
+Create your repository implementation in `packages/new_feature_repository/lib/src/new_feature_repository.dart`:
+
+```dart
+import 'package:core/core.dart';
+import 'api/new_feature_api.dart';
+import 'mappers/feature_mapper.dart';
+import 'models/feature_entity.dart';
+
+abstract class NewFeatureRepository {
+  Future<Result<List<FeatureEntity>, Exception>> getFeatureData();
+}
+
+class NewFeatureRepositoryImpl extends BaseRepository implements NewFeatureRepository {
+  final NewFeatureApi _api;
+  final FeatureMapper _mapper;
+
+  NewFeatureRepositoryImpl({NewFeatureApi? api, FeatureMapper? mapper})
+      : _api = api ?? NewFeatureApi(),
+        _mapper = mapper ?? const FeatureMapper();
+
+  @override
+  Future<Result<List<FeatureEntity>, Exception>> getFeatureData() async {
+    return handleRepositoryCall(
+      call: () async {
+        final result = await _api.fetchFeatureData();
+        return result.fold(
+          (jsonList) {
+            final dtos = jsonList.map((j) => FeatureDto.fromJson(j)).toList();
+            return Result.success(_mapper.mapToEntityList(dtos));
+          },
+          (failure) => Result.failure(failure),
+        );
+      },
+      logTag: 'NewFeatureRepositoryImpl.getFeatureData',
+    );
+  }
+}
+```
+
+---
+
+### Step 4: BLoC / Cubit Layer Implementation (`flutter_bloc`)
+
+Create your Cubit and State in `lib/features/new_feature/bloc/`:
+
+```dart
+// State
+abstract class NewFeatureState extends Equatable {
+  const NewFeatureState();
+  @override
+  List<Object?> get props => [];
+}
+
+class NewFeatureInitial extends NewFeatureState {}
+class NewFeatureLoading extends NewFeatureState {}
+class NewFeatureLoaded extends NewFeatureState {
+  final List<FeatureEntity> data;
+  const NewFeatureLoaded(this.data);
+  @override
+  List<Object?> get props => [data];
+}
+class NewFeatureError extends NewFeatureState {
+  final String message;
+  const NewFeatureError(this.message);
+  @override
+  List<Object?> get props => [message];
+}
+
+// Cubit
+class NewFeatureCubit extends Cubit<NewFeatureState> {
+  final NewFeatureRepository repository;
+
+  NewFeatureCubit({required this.repository}) : super(NewFeatureInitial());
+
+  Future<void> loadData() async {
+    emit(NewFeatureLoading());
+    final result = await repository.getFeatureData();
+    result.fold(
+      (entities) => emit(NewFeatureLoaded(entities)),
+      (failure) => emit(NewFeatureError(failure.toString())),
+    );
+  }
+}
+```
+
+---
+
+### Step 5: UI Layer & Scoped On-Demand DI Implementation
+
+Create your Page entrypoint and View in `lib/features/new_feature/ui/`:
+
+```dart
+// 1. Page Entrypoint: Scoped Dependency Injection
 class NewFeaturePage extends StatelessWidget {
   const NewFeaturePage({super.key});
 
   @override
   Widget build(BuildContext context) {
     return RepositoryProvider<NewFeatureRepository>(
-      create: (context) => NewFeatureRepositoryImpl(
-        api: FakeFeatureApi(),
-      ),
+      create: (context) => NewFeatureRepositoryImpl(),
       child: BlocProvider<NewFeatureCubit>(
         create: (context) => NewFeatureCubit(
           repository: context.read<NewFeatureRepository>(),
-        )..loadFeatureData(),
+        )..loadData(),
         child: const NewFeatureView(),
+      ),
+    );
+  }
+}
+
+// 2. View: Render UI based on BLoC state
+class NewFeatureView extends StatelessWidget {
+  const NewFeatureView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('New Feature')),
+      body: BlocBuilder<NewFeatureCubit, NewFeatureState>(
+        builder: (context, state) {
+          if (state is NewFeatureLoading) {
+            return const Center(child: CircularProgressIndicator());
+          } else if (state is NewFeatureLoaded) {
+            return ListView.builder(
+              itemCount: state.data.length,
+              itemBuilder: (context, index) => ListTile(title: Text(state.data[index].title)),
+            );
+          } else if (state is NewFeatureError) {
+            return Center(child: Text('Error: ${state.message}'));
+          }
+          return const SizedBox();
+        },
       ),
     );
   }
 }
 ```
 
-3. **Sub-tree / Modal On-Demand Injection:**  
-   Inject dependencies dynamically inside modal bottom sheets, tab views, or nested route flows (`context.read<T>()` / `RepositoryProvider.value`).
-
 ---
 
-## 🛠️ Shared Core Infrastructure (`packages/core`)
-
-### 1. Logging System (`Logger` & `LogOptions`)
-
-Comprehensive logging implementation located in `packages/core/lib/src/logging/logger.dart`:
+### Step 6: Register Route in AppRouter (`lib/core/routing/app_router.dart`)
 
 ```dart
-final Logger logger = const Logger();
-
-class LogOptions {
-  final bool showTime;
-  final bool showEmoji;
-  final bool logInRelease;
-  final LoggerLevel level;
-
-  const LogOptions({
-    this.showTime = true,
-    this.showEmoji = true,
-    this.logInRelease = false,
-    this.level = LoggerLevel.debug,
-  });
+class AppRoutes {
+  static const String newFeature = '/new-feature';
 }
-```
 
-### 2. Global BLoC Observer (`AppBlocObserver`)
-
-App-wide BLoC state change and error logging configured in `lib/core/utils/bloc_observer.dart` and attached in entry points (`main.dart` / `main_client_a.dart`):
-
-```dart
-// lib/main_client_a.dart
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  
-  // Attach Global BLoC Observer for state tracking
-  Bloc.observer = AppBlocObserver();
-
-  runApp(const ClientApp(config: config));
-}
-```
-
-### 3. Base Mapper Package (`BaseMapper<Entity, Dto>`)
-
-Standardized DTO-to-Entity mapping interface located in `packages/core/lib/src/mappers/base_mapper.dart`:
-
-```dart
-abstract class BaseMapper<Entity, Dto> {
-  const BaseMapper();
-
-  Entity mapToEntity(Dto dto);
-  Dto mapToDto(Entity entity);
-
-  List<Entity> mapToEntityList(List<Dto> dtos) {
-    return dtos.map(mapToEntity).toList();
-  }
-
-  List<Dto> mapToDtoList(List<Entity> entities) {
-    return entities.map(mapToDto).toList();
-  }
-}
-```
-
-### 4. Network Layer (`BaseApiService` & `ApiConfig`)
-
-Centralized API service wrapper in `packages/core/lib/src/network/`:
-
-```dart
-abstract class BaseApiService {
-  final dynamic client;
-  BaseApiService(this.client);
-
-  Future<T> handleResponse<T>({
-    required Future<dynamic> Function() apiCall,
-    required T Function(dynamic data) onSuccess,
-    required String logTag,
-  }) async {
-    try {
-      logger.info('Executing API Call', tag: logTag);
-      final rawResponse = await apiCall();
-      return onSuccess(rawResponse);
-    } catch (e, stack) {
-      logger.error('API Error encountered', error: e, stackTrace: stack, tag: logTag);
-      rethrow;
+class AppRouter {
+  static Route<dynamic> onGenerateRoute(RouteSettings settings) {
+    switch (settings.name) {
+      case AppRoutes.newFeature:
+        return MaterialPageRoute(builder: (_) => const NewFeaturePage());
+      default:
+        return MaterialPageRoute(builder: (_) => const Scaffold());
     }
   }
 }
@@ -214,25 +349,35 @@ lib/
 │   └── utils/bloc_observer.dart
 ├── main.dart                  # Generic Demo
 ├── main_client_a.dart         # Client A Target
-├── main_client_b.dart         # Client B Target
 └── features/
-    └── explorer/
-        ├── bloc/explorer_bloc.dart
-        └── ui/explorer_page.dart
+    └── new_feature/
+        ├── bloc/
+        │   └── new_feature_cubit.dart
+        └── ui/
+            └── new_feature_page.dart
 
 packages/
 ├── core/                      # Shared framework infrastructure (REUSED)
+│   ├── lib/src/errors/failures.dart
+│   ├── lib/src/logging/logger.dart
+│   ├── lib/src/mappers/base_mapper.dart
+│   ├── lib/src/network/base_api_service.dart
+│   ├── lib/src/repository/base_repository.dart
+│   └── lib/src/result/result.dart
 ├── app_ui/                    # Design system package (REUSED & THEMED)
-└── explorer_repository/      # Feature data repository (REUSED)
+└── new_feature_repository/    # Feature data repository package
+    ├── lib/src/api/new_feature_api.dart
+    ├── lib/src/mappers/feature_mapper.dart
+    └── lib/src/new_feature_repository.dart
 ```
 
 ---
 
-## ✅ Best Practices
+## ✅ Best Practices Checklist
 
 1. **White-Label Reuse:** 100% of code inside `packages/` is shared across all client entry points (`main_client_a.dart`, `main_client_b.dart`).
-2. **Error Handling:** Use the `Result` type for error handling, implement clear error messages, and handle loading states gracefully.
-3. **Dependency Injection:** Use root `main.dart` for global singletons AND scoped `RepositoryProvider` / `BlocProvider` on demand per feature `Page` boundary.
-4. **State Logging:** Attach `AppBlocObserver` to capture all state transitions and uncaught BLoC exceptions.
-5. **Data Mapping:** Extend `BaseMapper<Entity, Dto>` for deterministic mapping between network JSON models and domain entities.
-6. **Testing:** Write unit tests for each layer (API, Repository, and Cubit/BLoC).
+2. **Error Handling:** Use the `Result<S, E>` type for explicit error handling, returning success/failure results instead of throwing unhandled exceptions.
+3. **Data Mapping:** Always extend `BaseMapper<Entity, Dto>` for deterministic mapping between API DTOs and Domain Entities.
+4. **Scoped Dependency Injection:** Inject repositories and BLoCs on-demand at feature `Page` boundaries for automatic memory disposal upon route popping.
+5. **State Logging:** Attach `AppBlocObserver` in entry points to log all state changes (`currentState ➡️ nextState`).
+6. **Testing:** Write unit tests for each layer (API, Repository, Mapper, and Cubit/BLoC).
