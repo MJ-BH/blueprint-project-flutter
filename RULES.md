@@ -1,11 +1,13 @@
-# Hera Project Rules
+# Hera / VGV Project Rules
+
+> **Architectural Standard:** Based on [Very Good Ventures (VGV) Flutter Architecture](https://verygood.ventures/blog/very-good-flutter-architecture/).
 
 These rules are **ABSOLUTE** and must be strictly enforced across all feature branches:
 
-## 1. Architecture (Clean Architecture & BLoC)
+## 1. Architecture (Clean Architecture & VGV BLoC)
 - **Strict UI Separation:** The UI layer must NEVER contain business logic or direct API/Firebase calls.
 - **State Management:** Use exclusively `Cubit` or `Bloc` (`flutter_bloc`) for managing screen states.
-- **Repositories:** All data access logic belongs inside independent packages under `packages/` (e.g. `packages/authentication_repository`).
+- **VGV Package Strategy:** All data access logic belongs inside independent packages under `packages/` (e.g. `packages/core`, `packages/authentication_repository`).
 - **Dependency Injection:** Inject repositories via `RepositoryProvider` in `main.dart`.
 
 ## 2. Automated Testing

@@ -1,23 +1,37 @@
-# Hera Flutter Clean Architecture Blueprint
+# Blueprint Project Flutter
 
-> **Enterprise Flutter Monorepo Architecture with BLoC, Standalone UI Packages & Strict Governance**
+> **Enterprise Flutter Monorepo Architecture with BLoC, Standalone Packages & Strict Governance**  
+> *Architectural principles inspired by [Very Good Ventures Flutter Architecture](https://verygood.ventures/blog/very-good-flutter-architecture/).*
 
-This blueprint provides a production-ready starter template for building high-scale Flutter applications based on Clean Architecture principles, Result pattern error handling, Dio network clients, and strict project governance (`RULES.md`).
+This blueprint provides a production-ready starter template for building high-scale Flutter applications based on Clean Architecture principles, Result pattern error handling, Dio/Http network clients, and strict project governance (`RULES.md`).
 
 ---
 
-## 🏛️ Architecture & Project Layout
+## 🏛️ Architectural Foundation (Very Good Ventures Standards)
+
+Our architectural philosophy strictly adheres to the **Very Good Ventures (VGV) Flutter Architecture**:
+
+1. **Layer Separation & Monorepo Packages (`packages/`):** All reusable domain entities, data providers, API clients, and design system components are extracted into standalone local packages under `packages/` (e.g. `packages/core`, `packages/app_ui`, `packages/explorer_repository`).
+2. **UI Isolation:** UI widgets never make direct API, HTTP, or Firebase calls. All data flow is mediated by Repositories and `Cubit`/`BLoC` state management.
+3. **Repository Pattern:** Repositories serve as the single source of truth for the application, mapping raw API responses into domain models.
+4. **Result Pattern & Error Handling:** Explicit `Result<S, E>` types for predictable error propagation without unhandled runtime crashes.
+5. **Testing Discipline:** 100% testable architecture with mandatory unit tests for Blocs, Cubits, and Repositories.
+
+---
+
+## 📁 Monorepo Layout
 
 ```
 blueprint-project-flutter/
-├── RULES.md                    # Non-negotiable development rules
-├── packages/                   # Independent local packages
+├── RULES.md                    # Non-negotiable development rules (VGV Architecture)
+├── packages/                   # Independent local packages (VGV Package Strategy)
+│   ├── core/                   # Shared infrastructure (Dio client, BaseApiService, Result, Logger)
 │   ├── app_ui/                 # Design system tokens, theme extensions, dynamic components
 │   ├── explorer_repository/   # Monorepo repository package
 │   └── aswan_api/              # Base API service & network handlers
 ├── lib/
 │   ├── main.dart               # Entrypoint & RepositoryProvider setup
-│   ├── core/                   # Core infrastructure (Dio client, failures, formatters, observers)
+│   ├── core/                   # App-level routing (AppRouter) & context extensions
 │   └── features/
 │       └── explorer/           # Feature module following Clean Architecture
 │           ├── bloc/           # Cubit/BLoC state management
@@ -29,7 +43,7 @@ blueprint-project-flutter/
 
 ## 🚀 Key Features
 
-* **Strict Separation of Concerns:** UI widgets never make direct API or SDK calls.
+* **VGV Monorepo Modularization:** Independent local packages under `packages/`.
 * **BLoC/Cubit State Management:** Immutable state flow using `flutter_bloc`.
 * **Standalone UI Package (`packages/app_ui`):** Centralized design tokens and custom theme extensions.
 * **Mandatory Testing Coverage:** Pre-configured unit and widget test suite.
@@ -41,7 +55,9 @@ blueprint-project-flutter/
 ```bash
 # Get dependencies for root and packages
 flutter pub get
+cd packages/core && flutter pub get && cd ../..
 cd packages/app_ui && flutter pub get && cd ../..
+cd packages/explorer_repository && flutter pub get && cd ../..
 
 # Run tests
 flutter test
@@ -54,7 +70,7 @@ flutter run
 
 # 📖 Adding a New Functionality to the Application
 
-This guide outlines the process of adding a new functionality to our application, following our established architecture. The application uses a robust infrastructure for networking, logging, and error handling with the **Result pattern** and **Cubit/BLoC** for state management.
+This guide outlines the process of adding a new functionality to our application, following our established [Very Good Ventures Architecture](https://verygood.ventures/blog/very-good-flutter-architecture/). The application uses a robust infrastructure for networking, logging, and error handling with the **Result pattern** and **Cubit/BLoC** for state management.
 
 ## Core Infrastructure
 
@@ -349,7 +365,7 @@ class AppRouter {
 
 ---
 
-## 📐 File Structure Convention
+## 📐 File Structure Convention (VGV Monorepo Style)
 
 ```
 lib/
@@ -365,6 +381,7 @@ lib/
 │           └── feature_specific_widgets.dart
 │
 packages/
+├── core/
 └── new_feature_repository/
     ├── lib/
     │   ├── src/
