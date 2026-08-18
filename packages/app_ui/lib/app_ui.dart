@@ -1,13 +1,10 @@
 library app_ui;
 
-import 'package:flutter/material.dart';
+export 'src/colors/app_colors.dart';
+export 'src/components/app_components.dart';
 
-class AppColors {
-  static const Color primary = Color(0xFF0F172A);
-  static const Color accent = Color(0xFF38BDF8);
-  static const Color background = Color(0xFF090D16);
-  static const Color cardBg = Color(0xFF1E293B);
-}
+import 'package:flutter/material.dart';
+import 'src/colors/app_colors.dart';
 
 class AppTheme {
   static ThemeData get darkTheme {

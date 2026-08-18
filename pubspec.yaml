@@ -1,5 +1,5 @@
 name: blueprint_project_flutter
-description: Enterprise Clean Architecture & BLoC Flutter Blueprint
+description: Enterprise Clean Architecture & BLoC Flutter Blueprint (Oolab Edition)
 version: 1.0.0+1
 publish_to: none
 
@@ -13,6 +13,8 @@ dependencies:
   equatable: ^2.0.5
   app_ui:
     path: ./packages/app_ui
+  explorer_repository:
+    path: ./packages/explorer_repository
 
 dev_dependencies:
   flutter_test:
